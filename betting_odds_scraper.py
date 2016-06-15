@@ -4,9 +4,11 @@ MySQL database for later use.  The data records the teams,
 the line for each team, and the over under for the game 
 ''' 
 # TODOS:
-# - make sure team abbreviations are compatible with current ones in DB
-# - get git set up for this and poker project
+# - get git set up for poker project
+# - test helpers and main script
+# - insert into DB
 
+import game
 import unicodedata
 import requests
 import bs4
@@ -76,6 +78,72 @@ def incrementDate(date):
 	month = str(month)
 	year = str(month)
 	return year + month + day 
+
+"""
+converts the team abbreviation used by the website
+to the one used by the database 
+@param - abbr: the string to change if neccessary
+returns the converted abbreviation as a string
+"""
+def convertAbbr(abbr):
+	s = abbr
+	if "SDG" in abbr:
+		s = "SDN"
+	if "STL" in abbr:
+		s = "SLN"
+	if "SFO" in abbr:
+		s = "SFN"
+	if "LOS" in abbr:
+		s = "LAN"
+	if "NYY" in abbr:
+		s = "NYA"
+	if "LAA" in abbr:
+		s = "ANA"
+	if "KAN" in abbr:
+		s = "KCA"
+	if "CUB" in abbr:
+		s = "CHN"
+	if "NYM" in abbr:
+		s = "NYN"
+	if "MIA" in abbr:
+		s = "FLO"
+	if "CWS" in abbr:
+		s = "CHA"
+	return s
+
+""" 
+checks if an item occurs multiple times in a list
+@param - l: the list
+@param - item: the item to check 
+returns true if the list contains the item more than once
+"""
+def isDuplicate(l,item):
+	counter = 0
+	for i in l:
+		if i == item:
+			counter += 1
+	if counter > 1:
+		return True
+
+"""
+uses the favored teams odds to estimate the away team's odds 
+based on the way Bovada tends to have their odds for baseball games
+i.e. -120 usually means 110 for the underdog
+-155 means +140, -185 means +165, -220 might mean +190
+@param - odds: the favorite's odds
+returns the odds of the underdog
+"""
+def estimateUnderdogOdds(odds):
+	if odds >= -150:
+		underdogOdds = odds * -1 + 10
+	elif odds >= -180:
+		underdogOdds = odds * -1 + 15
+	elif odds >= -195:
+		underdogOdds = odds * -1 + 20
+	elif odds >= -270:
+		underdogOdds = odds * -1 + 30
+	else:
+		underdogOdds = odds * -1 + 40
 # end helper functions
 
 """
@@ -114,7 +182,7 @@ def getData(url,date):
 			teamName = str(unicodedata.normalize('NFKD',unicode(teamName)).encode('ascii','ignore'))
 			if teamName != " " and len(teamName) > 2:
 				# print teamName
-				teamNames.append(teamName)
+				teamNames.append(convertAbbr(teamName))
 		counter += 1
 	counter = 0
 	for td in whiteTeams:
@@ -127,7 +195,7 @@ def getData(url,date):
 			teamName = str(unicodedata.normalize('NFKD',unicode(teamName)).encode('ascii','ignore'))
 			if teamName != " " and len(teamName) > 2:
 				# print teamName
-				teamNames.append(teamName)
+				teamNames.append(convertAbbr(teamName))
 		counter += 1
 	counter = 0
 	seen = False 
@@ -153,17 +221,77 @@ def getData(url,date):
 	for item in bettingData:
 	 	print item
 
-	 # convert team names correctly
-
-	 # concatenate team name with date, add 0, check for double header
-
-	 # get the favored odds, calculate underdog odds using helper function
-
-	 # get the over under
-
-	 # get the over/under odds, calculate the other odds, should just be odds *-1 -10
-
-
+	# concatenate team name with date, add 0, check for double header
+	doubleheader = False
+	duplicateCount = 0
+	duplicateItem = ""
+	for i in range(0,len(teamNames)):
+		# pass on odd
+		if i % 2 != 0:
+			pass
+		else:
+			GAME_ID = teamName + date + "0"
+			if isDuplicate(teamNames,item) and duplicateItem == item and duplicateCount % 2 == 1:
+				duplicateCount += 1
+				GAME_ID = teamName + date + "2"
+			if isDuplicate(teamNames,item) and duplicateItem != item:
+				GAME_ID = teamName + date + "1"
+				doubleheader = True
+				duplicateCount += 1
+				duplicateItem = item
+			
+	# get the favored odds, calculate underdog odds using helper function
+	games = []
+	for i in range(0,len(bettingData)):
+		item = bettingData[i]
+		if item[0] == "-":
+			# if item is away team and favored
+			if i % 2 == 0:
+				awayOdds = item
+				# use function to get home team odds
+				homeOdds = estimateUnderdogOdds(awayOdds)
+			# if item is home team and favored
+			else:
+				homeOdds = item
+				awayOdds = estimateUnderdogOdds(homeOdds)
+		# item is over/under line
+		else:
+			if "u" in item:
+				u = item.find("u")
+				runs = item[:u]
+				odds = int(item[u+1])
+				if "12" in runs:
+					overUnder = float(runs[0]) + 0.5
+				else:
+					overUnder = float(runs[0])
+				# odds come as something like 15, so add 100
+				underOdds = odds + 100
+				# odds here are always positiv, so * -1 and subtract -10
+				overOdds = underOdds * -1 - 10
+			elif "o" in item:
+				o = item.find("o")
+				runs = item[:o]
+				odds = int(item[o+1])
+				if "12" in runs:
+					overUnder = float(runs[0]) + 0.5
+				else:
+					overUnder = float(runs[0])
+				# odds come as something like 15, so add 100
+				overOdds = odds + 100
+				# odds here are always positiv, so * -1 and subtract -10
+				underOdds = overOdds * -1 - 10
+			# means that over/under even odds, assume this means -105, -105
+			else:
+				if "12" in item:
+					overUnder = float(item[0]) + 0.5
+				else:
+					overUnder = float(item[0])
+				overOdds = -105
+				underOdds = -105
+		# create the game Object and add to list
+		game = Game(GAME_ID,homeOdds,awayOdds,overUnder,overOdds,underOdds)
+		games.append(game)
+	# insert into database
 
 
 

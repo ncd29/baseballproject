@@ -4,24 +4,26 @@ MySQL database for later use.  The data records the teams,
 the line for each team, and the over under for the game 
 ''' 
 # TODOS:
-# - get git set up for poker project
-# - test helpers and main script
 # - insert into DB
+# - put DB connection in config and gitignore it for this and poker project
+# - fix over under Bug
 
-import game
+import mysql.connector
 import unicodedata
 import requests
 import bs4
 from bs4 import BeautifulSoup
 
 # CONSTANTS
-STARTDATE2011 = "20110331"
+STARTDATE2011 = "20110603" #intial val = "20110331" overwritten due to errors (restarts)
 STARTDATE2012 = "20120328"
 STARTDATE2013 = "20130331"
 STARTDATE2014 = "20140322"
 STARTDATE2015 = "20150405"
 STARTDATE2016 = "20160403"
 URL = "http://feeds.donbest.com/ScoresWebApplication/servicePage.jsp?type=SCHED&leagueId=5&schedDate="
+DB = mysql.connector.connect(user='root',password='root',host='localhost',database='Baseball',
+    unix_socket="/Applications/MAMP/tmp/mysql/mysql.sock")
 
 # helper functions
 '''
@@ -74,9 +76,15 @@ def incrementDate(date):
 			year += 1
 		else:
 			day += 1
-	day = str(day)
-	month = str(month)
-	year = str(month)
+	if day < 10:
+		day = "0" + str(day)
+	else:
+		day = str(day)
+	if month < 10:
+		month = "0" + str(month)
+	else:
+		month = str(month)
+	year = str(year)
 	return year + month + day 
 
 """
@@ -109,6 +117,8 @@ def convertAbbr(abbr):
 		s = "FLO"
 	if "CWS" in abbr:
 		s = "CHA"
+	if "TAM" in abbr:
+		s = "TBA"
 	return s
 
 """ 
@@ -134,22 +144,25 @@ i.e. -120 usually means 110 for the underdog
 returns the odds of the underdog
 """
 def estimateUnderdogOdds(odds):
-	if odds >= -150:
-		underdogOdds = odds * -1 + 10
+	odds = int(odds)
+	if odds >= -145:
+		underdogOdds = odds * -1 - 10
 	elif odds >= -180:
-		underdogOdds = odds * -1 + 15
+		underdogOdds = odds * -1 - 15
 	elif odds >= -195:
-		underdogOdds = odds * -1 + 20
-	elif odds >= -270:
-		underdogOdds = odds * -1 + 30
+		underdogOdds = odds * -1 - 20
+	elif odds >= -265:
+		underdogOdds = odds * -1 - 30
 	else:
-		underdogOdds = odds * -1 + 40
+		underdogOdds = odds * -1 - 40
+	return underdogOdds
 # end helper functions
 
 """
 gets the data from the specific URL page and inserts into the database
 @param - url: the specific url to get the data from
 @param - date: the date of the games
+@param - noError: condition that signifies whether 
 """
 def getData(url,date):
 	request = requests.get(url)
@@ -215,33 +228,41 @@ def getData(url,date):
 			data = str(unicodedata.normalize('NFKD',unicode(data)).encode('ascii','ignore'))
 			if data != " ":
 				bettingData.append(data)
-	for item in teamNames:
-	    print item
-	print "halfway"
-	for item in bettingData:
-	 	print item
+	# for item in teamNames:
+	#     print item
+	# print "halfway"
+	# for item in bettingData:
+	#  	print item
 
 	# concatenate team name with date, add 0, check for double header
-	doubleheader = False
+	games = []
 	duplicateCount = 0
-	duplicateItem = ""
+	duplicateItems = []
 	for i in range(0,len(teamNames)):
+		item = teamNames[i]
 		# pass on odd
-		if i % 2 != 0:
+		if i % 2 == 0:
 			pass
 		else:
-			GAME_ID = teamName + date + "0"
-			if isDuplicate(teamNames,item) and duplicateItem == item and duplicateCount % 2 == 1:
+			GAME_ID = item + date + "0"
+			if isDuplicate(teamNames,item) and duplicateCount % 2 == 0 and item not in duplicateItems:
 				duplicateCount += 1
-				GAME_ID = teamName + date + "2"
-			if isDuplicate(teamNames,item) and duplicateItem != item:
-				GAME_ID = teamName + date + "1"
-				doubleheader = True
+				GAME_ID = item + date + "1"
+				duplicateItems.append(item)
+			elif isDuplicate(teamNames,item) and item in duplicateItems:
+				GAME_ID = item + date + "2"
 				duplicateCount += 1
-				duplicateItem = item
+			elif isDuplicate(teamNames,item) and item not in duplicateItems:
+				GAME_ID = item + date + "1"
+				duplicateItems.append(item)
+				duplicateCount += 1
+			games.append([GAME_ID])
 			
 	# get the favored odds, calculate underdog odds using helper function
-	games = []
+	overUnder = ""
+	overOdds = ""
+	underOdds = ""
+	counter = 0
 	for i in range(0,len(bettingData)):
 		item = bettingData[i]
 		if item[0] == "-":
@@ -254,49 +275,109 @@ def getData(url,date):
 			else:
 				homeOdds = item
 				awayOdds = estimateUnderdogOdds(homeOdds)
+			games[counter].append(homeOdds)
+			games[counter].append(awayOdds)
+			counter += 1
+
+	counter = 0
+	for i in range(0,len(bettingData)):
 		# item is over/under line
-		else:
-			if "u" in item:
-				u = item.find("u")
-				runs = item[:u]
-				odds = int(item[u+1])
-				if "12" in runs:
-					overUnder = float(runs[0]) + 0.5
-				else:
-					overUnder = float(runs[0])
-				# odds come as something like 15, so add 100
-				underOdds = odds + 100
-				# odds here are always positiv, so * -1 and subtract -10
-				overOdds = underOdds * -1 - 10
-			elif "o" in item:
-				o = item.find("o")
-				runs = item[:o]
-				odds = int(item[o+1])
-				if "12" in runs:
-					overUnder = float(runs[0]) + 0.5
-				else:
-					overUnder = float(runs[0])
-				# odds come as something like 15, so add 100
-				overOdds = odds + 100
-				# odds here are always positiv, so * -1 and subtract -10
-				underOdds = overOdds * -1 - 10
-			# means that over/under even odds, assume this means -105, -105
+		overUnder = ""
+		overOdds = ""
+		underOdds = ""
+		item = bettingData[i]
+		insert = False
+		if "u" in item:
+			u = item.find("u")
+			runs = item[:u]
+			odds = int(item[u+1:])
+			if int(runs[0]) == 1:
+				overUnder = float(runs[:2])
 			else:
+				overUnder = float(runs[0])
+			if "12" in runs:
+				overUnder += 0.5
+			# odds come as something like 15, so add 100
+			underOdds = odds + 100
+			# odds here are always positive, so * -1 and subtract -10
+			overOdds = underOdds * -1 - 10
+			insert = True
+		elif "o" in item:
+			o = item.find("o")
+			runs = item[:o]
+			odds = int(item[o+1:])
+			if "12" in runs:
+				overUnder = float(runs[0]) + 0.5
+			else:
+				overUnder = float(runs[0])
+			# odds come as something like 15, so add 100
+			overOdds = odds + 100
+			# odds here are always positiv, so * -1 and subtract -10
+			underOdds = overOdds * -1 - 10
+			insert = True
+		# means that over/under even odds, assume this means -105, -105
+		else:
+			if "-" not in item:
 				if "12" in item:
 					overUnder = float(item[0]) + 0.5
 				else:
 					overUnder = float(item[0])
 				overOdds = -105
 				underOdds = -105
-		# create the game Object and add to list
-		game = Game(GAME_ID,homeOdds,awayOdds,overUnder,overOdds,underOdds)
-		games.append(game)
+				insert = True
+		if insert:
+			games[counter].append(overUnder)
+			games[counter].append(overOdds)
+			games[counter].append(underOdds)
+			counter += 1
+
 	# insert into database
+	cursor = DB.cursor()
+	for game in games:
+		query = ("INSERT INTO betting_data " 
+			"(GAME_ID,HOME_ODDS,AWAY_ODDS,OVER_UNDER,OVER_ODDS,UNDER_ODDS )"
+			"VALUES (%(game_id)s, %(home_odds)s, %(away_odds)s, %(over_under)s, %(over_odds)s, %(under_odds)s)")
 
+		print game[0]
+		# print game[1]
+		# print game[2]
+		# print game[3]
+		# print game[4]
+		# print game[5]
 
+		queryData = {
+			'game_id': game[0],
+			'home_odds': game[1],
+			'away_odds': game[2],
+			'over_under': game[3],
+			'over_odds': game[4],
+			'under_odds': game[5], 
+		} 
 
+		cursor.execute(query,queryData)
 
-
+		DB.commit()
+	
+	# # recursively call next date, stop after 2015 for now
+	if date != "20151231":
+		nextDate = incrementDate(date)
+		# try except to avoid errors
+		erorrs = False
+		try:
+			getData(URL+nextDate,nextDate)
+		except:
+			nextDate = incrementDate(nextDate)
+			errors = True
+			while errors:
+				try:
+					getData(URL+nextDate,nextDate)
+					erros = False
+				except:
+					nextDate = incrementDate(nextDate)
 
 # starts the script
 getData(URL+STARTDATE2011,STARTDATE2011)
+
+# close connection when done
+DB.close()
+

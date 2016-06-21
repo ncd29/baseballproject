@@ -8,16 +8,21 @@ the line for each team, and the over under for the game
 # - put DB connection in config and gitignore it for this and poker project
 # - fix over under Bug
 
+# BETTING DATA DONE LOADING FOR YEARS 2011 - 2013
+
 import mysql.connector
 import unicodedata
 import requests
 import bs4
 from bs4 import BeautifulSoup
 
-# CONSTANTS
-STARTDATE2011 = "20110603" #intial val = "20110331" overwritten due to errors (restarts)
-STARTDATE2012 = "20120328"
-STARTDATE2013 = "20130331"
+# CONSTANTS - fix the dates after done for reuse
+STARTDATE2011 = "20110331" #intial val = "20110331" overwritten due to errors (restarts)
+ENDDATE2011 = "20111028"
+STARTDATE2012 = "20120423" #skips a few games, and a few MIA games
+ENDDATE2012 = "20121028"
+STARTDATE2013 = "20130603"
+ENDDATE2013 = "20131030"
 STARTDATE2014 = "20140322"
 STARTDATE2015 = "20150405"
 STARTDATE2016 = "20160403"
@@ -113,8 +118,9 @@ def convertAbbr(abbr):
 		s = "CHN"
 	if "NYM" in abbr:
 		s = "NYN"
-	if "MIA" in abbr:
-		s = "FLO"
+	# leave commented out for years greater than 2011, FLO switched to MIA in 2012
+	# if "MIA" in abbr:
+	# 	s = "FLO"
 	if "CWS" in abbr:
 		s = "CHA"
 	if "TAM" in abbr:
@@ -165,6 +171,7 @@ gets the data from the specific URL page and inserts into the database
 @param - noError: condition that signifies whether 
 """
 def getData(url,date):
+	print date
 	request = requests.get(url)
 	soup = BeautifulSoup(request.content)
 	# contains the team names
@@ -196,6 +203,7 @@ def getData(url,date):
 			if teamName != " " and len(teamName) > 2:
 				# print teamName
 				teamNames.append(convertAbbr(teamName))
+			# print "greyTeam = " + teamName
 		counter += 1
 	counter = 0
 	for td in whiteTeams:
@@ -209,25 +217,34 @@ def getData(url,date):
 			if teamName != " " and len(teamName) > 2:
 				# print teamName
 				teamNames.append(convertAbbr(teamName))
+			# print "whiteTeam = " + teamName
 		counter += 1
 	counter = 0
 	seen = False 
 	for td in greyData:
 		counter += 1
-		if (counter + 1) % 16 == 0:
-			data = td.contents[0]
-			data = str(unicodedata.normalize('NFKD',unicode(data)).encode('ascii','ignore'))
-			if data != " ":
-				bettingData.append(data)
+		try:
+			if (counter + 1) % 16 == 0:
+				data = td.contents[0]
+	 			data = str(unicodedata.normalize('NFKD',unicode(data)).encode('ascii','ignore'))
+				if data != " ":
+					bettingData.append(data)
+				# print "greyData = " + data
+		except: 
+			print "failed when scraping data"	
 	counter = 0
 	seen = False 
 	for td in whiteData:
 		counter += 1
-		if (counter + 1) % 16 == 0:
-			data = td.contents[0]
-			data = str(unicodedata.normalize('NFKD',unicode(data)).encode('ascii','ignore'))
-			if data != " ":
-				bettingData.append(data)
+		try:
+			if (counter + 1) % 16 == 0:
+				data = td.contents[0]
+				data = str(unicodedata.normalize('NFKD',unicode(data)).encode('ascii','ignore'))
+				if data != " ":
+					bettingData.append(data)
+				# print "whiteData = " + data
+		except: 
+			print "failed when scraping data"
 	# for item in teamNames:
 	#     print item
 	# print "halfway"
@@ -275,8 +292,12 @@ def getData(url,date):
 			else:
 				homeOdds = item
 				awayOdds = estimateUnderdogOdds(homeOdds)
-			games[counter].append(homeOdds)
-			games[counter].append(awayOdds)
+			try:
+				games[counter].append(homeOdds)
+				games[counter].append(awayOdds)
+			except:
+				# betting data has overreached that of the games, fail
+				print "failed: bettingData too long"
 			counter += 1
 
 	counter = 0
@@ -318,65 +339,83 @@ def getData(url,date):
 		# means that over/under even odds, assume this means -105, -105
 		else:
 			if "-" not in item:
-				if "12" in item:
-					overUnder = float(item[0]) + 0.5
-				else:
-					overUnder = float(item[0])
+				try: 
+					if "12" in item:
+						overUnder = float(item[0]) + 0.5
+					else:
+						overUnder = float(item[0])
+				except:
+					# means it failed as written so not a game data
+					overUnder = 0.0
 				overOdds = -105
 				underOdds = -105
 				insert = True
 		if insert:
-			games[counter].append(overUnder)
-			games[counter].append(overOdds)
-			games[counter].append(underOdds)
+			try:
+				games[counter].append(overUnder)
+				games[counter].append(overOdds)
+				games[counter].append(underOdds)
+			except:
+				print "failed: betting data too long"
 			counter += 1
 
 	# insert into database
 	cursor = DB.cursor()
 	for game in games:
-		query = ("INSERT INTO betting_data " 
-			"(GAME_ID,HOME_ODDS,AWAY_ODDS,OVER_UNDER,OVER_ODDS,UNDER_ODDS )"
-			"VALUES (%(game_id)s, %(home_odds)s, %(away_odds)s, %(over_under)s, %(over_odds)s, %(under_odds)s)")
+		try:
+			query = ("INSERT INTO betting_data " 
+				"(GAME_ID,HOME_ODDS,AWAY_ODDS,OVER_UNDER,OVER_ODDS,UNDER_ODDS )"
+				"VALUES (%(game_id)s, %(home_odds)s, %(away_odds)s, %(over_under)s, %(over_odds)s, %(under_odds)s)")
 
-		print game[0]
-		# print game[1]
-		# print game[2]
-		# print game[3]
-		# print game[4]
-		# print game[5]
+			print game[0]
+			# print game[1]
+			# print game[2]
+			# print game[3]
+			# print game[4]
+			# print game[5]
 
-		queryData = {
-			'game_id': game[0],
-			'home_odds': game[1],
-			'away_odds': game[2],
-			'over_under': game[3],
-			'over_odds': game[4],
-			'under_odds': game[5], 
-		} 
+			queryData = {
+				'game_id': game[0],
+				'home_odds': game[1],
+				'away_odds': game[2],
+				'over_under': game[3],
+				'over_odds': game[4],
+				'under_odds': game[5], 
+			} 
 
-		cursor.execute(query,queryData)
+			cursor.execute(query,queryData)
+		except:
+			# if it fails pass, but don't break
+			print "insert failed: " + str(game[0])
 
 		DB.commit()
 	
-	# # recursively call next date, stop after 2015 for now
-	if date != "20151231":
+	# # recursively call next date, stop after 2013 for now
+	if date == ENDDATE2011:
+		nextDate = STARTDATE2012
+	elif date == ENDDATE2012:
+		nextDate = STARTDATE2013
+	elif date == ENDDATE2013:
+		print "done"		
+	else:
 		nextDate = incrementDate(date)
+		getData(URL+nextDate,nextDate)
 		# try except to avoid errors
-		erorrs = False
-		try:
-			getData(URL+nextDate,nextDate)
-		except:
-			nextDate = incrementDate(nextDate)
-			errors = True
-			while errors:
-				try:
-					getData(URL+nextDate,nextDate)
-					erros = False
-				except:
-					nextDate = incrementDate(nextDate)
+		# erorrs = False
+		# try:
+		# 	getData(URL+nextDate,nextDate)
+		# except:
+		# 	nextDate = incrementDate(nextDate)
+		# 	errors = True
+		# 	while errors:
+		# 		try:
+		# 			getData(URL+nextDate,nextDate)
+		# 			errors = False
+		# 		except:
+		# 			nextDate = incrementDate(nextDate)
 
-# starts the script
-getData(URL+STARTDATE2011,STARTDATE2011)
+# starts the script - already done 2011-2012
+getData(URL+STARTDATE2013,STARTDATE2013)
 
 # close connection when done
 DB.close()

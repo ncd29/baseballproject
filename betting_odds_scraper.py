@@ -7,6 +7,7 @@ the line for each team, and the over under for the game
 # - insert into DB
 # - put DB connection in config and gitignore it for this and poker project
 # - fix over under Bug
+# - bug still exists when doing scores, misses a few games from 2016, not sure why
 
 # BETTING DATA DONE LOADING FOR YEARS 2011 - 2013
 
@@ -26,6 +27,7 @@ ENDDATE2013 = "20131030"
 STARTDATE2014 = "20140322"
 STARTDATE2015 = "20150405"
 STARTDATE2016 = "20160403"
+ENDDATE2016 = "20160623" # change as needed
 URL = "http://feeds.donbest.com/ScoresWebApplication/servicePage.jsp?type=SCHED&leagueId=5&schedDate="
 DB = mysql.connector.connect(user='root',password='root',host='localhost',database='Baseball',
     unix_socket="/Applications/MAMP/tmp/mysql/mysql.sock")
@@ -180,6 +182,9 @@ def getData(url,date):
 	# contains the betting info
 	greyData = soup.find_all("td",{"class":"scores-greybg"})
 	whiteData = soup.find_all("td",{"class":"scores-whitebg"})
+	# contains the scores
+	greyScores = soup.find_all("td",{"class":"scores-greybg-highlight"})
+	whiteScores = soup.find_all("td",{"class":"scores-whitebg-highlight"})
 
 	# data for the loops
 
@@ -245,12 +250,25 @@ def getData(url,date):
 				# print "whiteData = " + data
 		except: 
 			print "failed when scraping data"
-	# for item in teamNames:
-	#     print item
-	# print "halfway"
-	# for item in bettingData:
-	#  	print item
-
+	counter = 0
+	scores1 = [] # grey scores first
+	scores2 = [] # white scores second
+	# grey names are done first, so add grey scores first
+	length = max(len(whiteScores),len(greyScores))
+	for i in range(0,length):
+		# want every other score, starting from 0
+		try:
+			if counter % 2 == 0:
+				data1 = greyScores[i].contents[0]
+				data2 = whiteScores[i].contents[0]
+				scores1.append(data1)
+				scores2.append(data2)
+		except:
+			print "failed when scraping data"
+		counter += 1
+	# scores = scores1 + scores2
+	# for score in scores:
+	# 	print "score = " + str(score)
 	# concatenate team name with date, add 0, check for double header
 	games = []
 	duplicateCount = 0
@@ -359,10 +377,45 @@ def getData(url,date):
 				print "failed: betting data too long"
 			counter += 1
 
+	# add the scores on to each game
+	counter = 0
+	for i in range(0,len(scores1)):
+		try:
+			if i % 2 == 0:
+				games[counter].append(scores1[i])
+				games[counter].append(scores1[i+1])
+				counter += 1
+				if counter > len(games)/2:
+					break
+		except:
+			print "failed: scores too long"
+	# start at 2 cause weird bug ?
+	for i in range(2,len(scores2)):
+		try: 
+			if i % 2 == 0:
+				games[counter].append(scores2[i])
+				games[counter].append(scores2[i+1])
+				counter += 1
+		except:
+			print "failed: scores too long"
+
 	# insert into database
 	cursor = DB.cursor()
 	for game in games:
 		try:
+			# do new game ID query first for years after 2013 (since only data up until and including 2013 is in the DB)
+			idQuery = ("INSERT INTO games "
+				"(GAME_ID,HOME_SCORE_CT,AWAY_SCORE_CT) "
+				"VALUES (%(game_id)s, %(homeScore)s, %(awayScore)s)")
+
+			idQueryData = {
+				'game_id': game[0],
+				'homeScore': int(game[7]),
+				'awayScore': int(game[6]),
+			}
+
+			cursor.execute(idQuery,idQueryData)
+
 			query = ("INSERT INTO betting_data " 
 				"(GAME_ID,HOME_ODDS,AWAY_ODDS,OVER_UNDER,OVER_ODDS,UNDER_ODDS )"
 				"VALUES (%(game_id)s, %(home_odds)s, %(away_odds)s, %(over_under)s, %(over_odds)s, %(under_odds)s)")
@@ -391,6 +444,7 @@ def getData(url,date):
 		DB.commit()
 	
 	# # recursively call next date, stop after 2013 for now
+	nextDate = incrementDate(date)
 	if date == ENDDATE2011:
 		nextDate = STARTDATE2012
 	elif date == ENDDATE2012:
@@ -398,24 +452,14 @@ def getData(url,date):
 	elif date == ENDDATE2013:
 		print "done"		
 	else:
-		nextDate = incrementDate(date)
-		getData(URL+nextDate,nextDate)
-		# try except to avoid errors
-		# erorrs = False
-		# try:
-		# 	getData(URL+nextDate,nextDate)
-		# except:
-		# 	nextDate = incrementDate(nextDate)
-		# 	errors = True
-		# 	while errors:
-		# 		try:
-		# 			getData(URL+nextDate,nextDate)
-		# 			errors = False
-		# 		except:
-		# 			nextDate = incrementDate(nextDate)
+		if nextDate == ENDDATE2016:
+			print "done"
+		else:
+			getData(URL+nextDate,nextDate)
 
-# starts the script - already done 2011-2012
-getData(URL+STARTDATE2013,STARTDATE2013)
+# starts the script - already done 2011-2013
+# starting at 2016 to test theories for now
+getData(URL+STARTDATE2016,STARTDATE2016)
 
 # close connection when done
 DB.close()

@@ -1,4 +1,5 @@
 library(RMySQL)
+# trick for only loading the file/script if it is not already in the namespace
 if(!exists("convertOddsToPercentage", mode="function")) source("bettingOdds.R")
 
 # establishes connection, only contains dates before 2014
@@ -81,3 +82,5 @@ for (i in 1:length(teamNames)) {
     }
   }
 }
+
+dbDisconnect(con)

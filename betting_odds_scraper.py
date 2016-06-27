@@ -8,6 +8,7 @@ the line for each team, and the over under for the game
 # - put DB connection in config and gitignore it for this and poker project
 # - fix over under Bug
 # - bug still exists when doing scores, misses a few games from 2016, not sure why
+# - about 30 failures
 
 # BETTING DATA DONE LOADING FOR YEARS 2011 - 2013
 

@@ -22,7 +22,7 @@ for (i in 1:length(col(teamIDs))) {
   overUnderProfits[i,1] = teamName
   overOdds <- as.data.frame(dbGetQuery(con,paste("SELECT OVER_UNDER,OVER_ODDS,HOME_SCORE_CT,AWAY_SCORE_CT
     FROM betting_data INNER JOIN games ON games.GAME_ID = betting_data.GAME_ID 
-    WHERE games.GAME_ID LIKE '%",teamName,"%' AND games.TEMP_PARK_CT > 60 ",sep = "")))
+    WHERE games.GAME_ID LIKE '%",teamName,"%' AND games.TEMP_PARK_CT > 70 ",sep = "")))
   if (length(rownames(overOdds)) > 0) {
     for (j in 1:length(rownames(overOdds))) {
       overUnder = overOdds[j,]$OVER_UNDER

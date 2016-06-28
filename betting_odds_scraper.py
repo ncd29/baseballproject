@@ -460,7 +460,7 @@ def getData(url,date):
 
 # starts the script - already done 2011-2013
 # starting at 2016 to test theories for now
-getData(URL+STARTDATE2016,STARTDATE2016)
+# getData(URL+STARTDATE2016,STARTDATE2016)
 
 # close connection when done
 DB.close()

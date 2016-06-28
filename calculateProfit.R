@@ -39,7 +39,7 @@ for (i in 1:length(teamNames)) {
   if (teamName == "OAK") {
     homeOdds <- as.data.frame(dbGetQuery(con,paste("SELECT HOME_ODDS,HOME_SCORE_CT,AWAY_SCORE_CT
     FROM betting_data INNER JOIN games ON games.GAME_ID = betting_data.GAME_ID 
-    WHERE games.GAME_ID LIKE '%",teamName,"%'",sep = "")))
+    WHERE games.GAME_ID LIKE '%",teamName,"%'","AND games.GAME_ID LIKE '%2016%'",sep = "")))
     for (j in 1:length(rownames(homeOdds))) {
       homeOdd = homeOdds[j,]$HOME_ODDS
       homeScore = homeOdds[j,]$HOME_SCORE_CT

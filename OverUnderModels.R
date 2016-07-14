@@ -15,14 +15,17 @@ con <- dbConnect(MySQL(),dbname="Baseball", host="localhost",
 teamIDs <- as.vector(dbGetQuery(con, "SELECT DISTINCT TEAM_ID FROM teams WHERE
                                    YEAR_ID = '2011'"))
 
-overUnderProfits = data.frame("Team"=character(),"Profit"=numeric(),stringsAsFactors = FALSE)
+overUnderProfits = data.frame("Team"=character(),"SampleSize"=numeric(),
+                              "Profit"=numeric(),stringsAsFactors = FALSE)
 
 for (i in 1:length(col(teamIDs))) {
   teamName = teamIDs[i,]
   overUnderProfits[i,1] = teamName
   overOdds <- as.data.frame(dbGetQuery(con,paste("SELECT OVER_UNDER,OVER_ODDS,HOME_SCORE_CT,AWAY_SCORE_CT
     FROM betting_data INNER JOIN games ON games.GAME_ID = betting_data.GAME_ID 
-    WHERE games.GAME_ID LIKE '%",teamName,"%' AND games.TEMP_PARK_CT > 70 ",sep = "")))
+    WHERE games.GAME_ID LIKE '%",teamName,"%' AND games.TEMP_PARK_CT > 69 
+                  AND games.TEMP_PARK_CT < 81",sep = "")))
+  overUnderProfits[i,2] = length(rownames(overOdds))
   if (length(rownames(overOdds)) > 0) {
     for (j in 1:length(rownames(overOdds))) {
       overUnder = overOdds[j,]$OVER_UNDER
@@ -34,13 +37,17 @@ for (i in 1:length(col(teamIDs))) {
       else {
         profit = -1
       }
-      if (!is.na(overUnderProfits[i,2])) {
-        overUnderProfits[i,2] = overUnderProfits[i,2] + profit
+      if (!is.na(overUnderProfits[i,3])) {
+        overUnderProfits[i,3] = overUnderProfits[i,3] + profit
       }
       else {
-        overUnderProfits[i,2] = profit
+        overUnderProfits[i,3] = profit
+        
       }
     }
   }
 }
 
+write.csv(overUnderProfits,file="overUnderProfitsTempbtwn70and80.csv")
+
+dbDisconnect(con)

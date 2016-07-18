@@ -8,6 +8,7 @@ from already completed games
 '''
 
 # TODO: script works but query needs fixing, probably the games one
+# need to run this script every new day to get new data
 import scraper538constants
 from scraper538constants import * 
 import datetime

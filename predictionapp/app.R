@@ -15,7 +15,6 @@ today = Sys.Date()
 year = substr(today,1,4)
 month = substr(today,6,7)
 day = substr(today,9,10)
-day = "15"
 # for 538 - get all games from 2016, this is hardcoded for now
 games <- as.data.frame(dbGetQuery(con,paste("SELECT GAME_ID,HOME_PREDICTION,AWAY_PREDICTION FROM 
                       predictions WHERE PREDICTION_FROM = 'fivethirtyeight.com'
@@ -53,11 +52,10 @@ d <- shinyServer(
     # get the inputted odds
     output$out <- renderUI({ 
       lapply(1:length(rownames(games)),function(i) {
-        #print(input[[paste("game",i,sep="")]])
-        odds[i,1] = substr(input[[paste("game",i,sep="")]],2,4)
+        odds[i,1] = substr(input[[paste("game",i,sep="")]],1,4)
         #print(paste(odds[i,1]))
-        odds[i,2] = substr(input[[paste("game",i,sep="")]],7,9)
-        #print(paste(odds[i,2]))
+        odds[i,2] = substr(input[[paste("game",i,sep="")]],6,9)
+        #print(as.numeric(odds[i,2]))
       #})
       #lapply(1:length(rownames(games)),function(i) {
       #output[[paste("game",i,sep="")]] <- renderText({
@@ -66,8 +64,10 @@ d <- shinyServer(
         homeLine = convertOddsToPercentage(as.numeric(odds[i,2]))
         awayPrediction = games[i,]$AWAY_PREDICTION - .04
         homePrediction = games[i,]$HOME_PREDICTION - .04
+        print(awayPrediction)
+        print(awayLine)
         if (awayPrediction >= awayLine) {
-          HTML(paste("For game",games[i,]$GAME_ID,": ","bet on the away team.","The the betting line is",substr(as.character(awayPrediction-awayLine),1,6)),sep="<br/>")
+          HTML(paste("For game",games[i,]$GAME_ID,": ","bet on the away team.","The edge over the betting line is",substr(as.character(awayPrediction-awayLine),1,6)),sep="<br/>")
         }
         else if (homePrediction >= homeLine) {
           HTML(paste("For game",games[i,]$GAME_ID,": ","bet on the home team.","The edge over the betting line is",substr(as.character(homePrediction-homeLine),1,6)),sep="<br/>")
